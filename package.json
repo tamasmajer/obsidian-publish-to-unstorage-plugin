@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-publish-to-unstorage-plugin",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "This project shows how to build an open publishing infrastructure based on Unstorage.",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/tamasmajer/obsidian-publish-to-unstorage-plugin"
