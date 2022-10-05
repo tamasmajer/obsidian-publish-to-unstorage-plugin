@@ -2,3 +2,6 @@
 
 This project shows how to build an open publishing infrastructure based on Unstorage.
 
+## Status
+
+Unpublished, under development.
