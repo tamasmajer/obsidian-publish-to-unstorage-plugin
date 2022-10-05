@@ -1,85 +1,130 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import {
+	App,
+	Notice,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	Vault,
+	TFile
+} from 'obsidian';
 
-// Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-	mySetting: string;
+import { createStorage, Storage } from 'unstorage'
+import createDriver from 'unstorage-driver-http-headers'
+
+const UNSTORAGE_SERVER_DATA_API_URL = 'http://localhost:8081/api/data'
+const UNSTORAGE_PREVIEW_SITE_URL = 'http://localhost:8080'
+
+const createLinkHtml = (href: string, title: string) => {
+	return `<a style="color:inherit;text-decoration:underline;" href="${href}">${title}</a>`;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+class PublishUtils {
+
+	static async getCurrentPageAsMarkdown(appVault: Vault, activeFile: TFile): Promise<string | undefined> {
+		try {
+			const markdown = await appVault.cachedRead(activeFile)
+			return markdown
+		} catch (e) {
+			console.log(e)
+		}
+	}
+
+	static getServerDataApi(apiKey: string): Storage {
+		const AUTHORIZATION_HEADER = { 'Authorization': 'Bearer ' + apiKey }
+		const driver = createDriver({ base: UNSTORAGE_SERVER_DATA_API_URL, headers: AUTHORIZATION_HEADER })
+		const storage = createStorage({ driver })
+		return storage
+	}
+
+	static async uploadToUnstorageServer(name: string, vault: any, token: string): Promise<number> {
+		const dataApi = this.getServerDataApi(token);
+		const before = await dataApi.getItem(name);
+		const already = JSON.stringify(vault) === JSON.stringify(before)
+		if (already) return 2;
+		await dataApi.setItem(name, vault);
+		const check = await dataApi.getItem(name);
+		const saved = JSON.stringify(vault) === JSON.stringify(check)
+		return saved ? 1 : 0;
+	}
+
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+
+
+interface UnstorageSettings {
+	apiKey: string;
+}
+
+const DEFAULT_SETTINGS: UnstorageSettings = {
+	apiKey: ''
+}
+
+export default class UnstoragePlugin extends Plugin {
+	// icon is from https://lucide.dev/
+	PUBLISH_BUTTON_ICON = 'arrow-up-circle'
+	PUBLISH_BUTTON_TEXT = 'Publish To Unstorage'
+	PUBLISH_COMMAND_ID = 'obsidian-publish-to-unstorage'
+	PUBLISH_COMMAND_NAME = 'Save current file with linked documents to an Unstorage server.'
+
+	settings: UnstorageSettings;
+
+	async publishToUnstorageServer(activeFile: TFile | null, appVault: Vault, apiKey: string): Promise<string> {
+		const STATUS_NO_API_KEY = 'Open Settings to see how to get an API Key!'
+		const STATUS_NO_ACTIVE_FILE = 'Select a file first to upload!'
+		const STATUS_COULD_NOT_SAVE = 'Could not save!'
+		const STATUS_ALREADY_SAVED = 'Already saved!'
+		const STATUS_ALREADY_SAVED_LINK = 'Open'
+		const STATUS_SAVED = 'Saved!'
+		const STATUS_SAVED_LINK = 'Have a look'
+
+		if (!apiKey) return STATUS_NO_API_KEY;
+		if (!activeFile) return STATUS_NO_ACTIVE_FILE;
+		let saved = 0
+		try {
+			// await getVaultAsObject(this.app)
+			const activeFile = app.workspace.getActiveFile()
+			if (activeFile) {
+				const markdown = await PublishUtils.getCurrentPageAsMarkdown(appVault, activeFile);
+				if (markdown) {
+					const notes = { [activeFile.path]: markdown }
+					saved = await PublishUtils.uploadToUnstorageServer(activeFile.name, notes, apiKey);
+					console.log({ saved })
+				}
+			}
+			if (saved == 0) return STATUS_COULD_NOT_SAVE;
+			else if (saved == 2) return STATUS_ALREADY_SAVED + ' ' + createLinkHtml(UNSTORAGE_PREVIEW_SITE_URL, STATUS_ALREADY_SAVED_LINK);
+			else return STATUS_SAVED + ' ' + createLinkHtml(UNSTORAGE_PREVIEW_SITE_URL, STATUS_SAVED_LINK);
+		} catch (e) {
+			console.log('PUBLISH ERR', e);
+			return `Error: ${e.getMessage()}`;
+		}
+	}
+
+	async publishToUnstorageCommand() {
+		const activeFile = app.workspace.getActiveFile()
+		const message = await this.publishToUnstorageServer(activeFile, app.vault, this.settings.apiKey);
+		const notice = new DocumentFragment()
+		notice.createDiv().innerHTML = message;
+		new Notice(notice, 5000)
+	}
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+		this.addRibbonIcon(this.PUBLISH_BUTTON_ICON, this.PUBLISH_BUTTON_TEXT, async (evt: MouseEvent) => {
+			await this.publishToUnstorageCommand()
 		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
-
-		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
+			id: this.PUBLISH_COMMAND_ID,
+			name: this.PUBLISH_COMMAND_NAME,
 			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
+				this.publishToUnstorageCommand();
 			}
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
-
-	onunload() {
-
+		this.addSettingTab(new UnstorageSettingTab(this.app, this));
 	}
 
 	async loadSettings() {
@@ -91,46 +136,42 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+class UnstorageSettingTab extends PluginSettingTab {
+	TITLE = 'Publish To Unstorage'
+	LINK_TO_OPEN_PREVIEW_SITE = 'open preview site'
+	LINK_TO_OPEN_PREVIEW_SITE_URL = UNSTORAGE_PREVIEW_SITE_URL
+	LINK_TO_GET_API_KEY = 'or get one here'
+	LINK_TO_GET_API_KEY_URL = UNSTORAGE_PREVIEW_SITE_URL
+	TEXT_CURRENT_API_KEY = 'Enter your API Key:'
+	TEXT_ENTER_API_KEY = ''
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
+	plugin: UnstoragePlugin;
 
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: UnstoragePlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
+		containerEl.createEl('h2', { text: this.TITLE });
+		containerEl.createDiv().innerHTML = createLinkHtml(this.LINK_TO_OPEN_PREVIEW_SITE_URL, this.LINK_TO_OPEN_PREVIEW_SITE);
+
+		const getApiKey = new DocumentFragment();
+		getApiKey.createDiv().innerHTML = createLinkHtml(this.LINK_TO_GET_API_KEY_URL, this.LINK_TO_GET_API_KEY);
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName(this.TEXT_CURRENT_API_KEY)
+			.setDesc(getApiKey)
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder(this.TEXT_ENTER_API_KEY)
+				.setValue(this.plugin.settings.apiKey)
 				.onChange(async (value) => {
-					console.log('Secret: ' + value);
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.apiKey = value;
 					await this.plugin.saveSettings();
 				}));
 	}
