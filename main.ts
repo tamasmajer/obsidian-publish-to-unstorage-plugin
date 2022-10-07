@@ -8,12 +8,14 @@ import {
 	TFile
 } from 'obsidian';
 
+import * as dotenv from 'dotenv'
 
 import { createStorage, Storage } from 'unstorage'
 import createDriver from 'unstorage-driver-http-headers'
 
-const UNSTORAGE_SERVER_DATA_API_URL = 'http://localhost:8081/api/data'
-const UNSTORAGE_PREVIEW_SITE_URL = 'http://localhost:8080'
+dotenv.config()
+const { UNSTORAGE_SERVER_DATA_API_URL = 'http://localhost:8081/api/data' } = process.env
+const { UNSTORAGE_PREVIEW_SITE_URL = 'http://localhost:3000/home' } = process.env
 
 const createLinkHtml = (href: string, title: string) => {
 	return `<a style="color:inherit;text-decoration:underline;" href="${href}">${title}</a>`;
@@ -82,7 +84,6 @@ export default class UnstoragePlugin extends Plugin {
 		if (!activeFile) return STATUS_NO_ACTIVE_FILE;
 		let saved = 0
 		try {
-			// await getVaultAsObject(this.app)
 			const activeFile = app.workspace.getActiveFile()
 			if (activeFile) {
 				const markdown = await PublishUtils.getCurrentPageAsMarkdown(appVault, activeFile);
