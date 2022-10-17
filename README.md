@@ -16,3 +16,8 @@ We can connect to this server using a modified Unstorage http driver. (Repo: [un
 So to sum it up, we get an API key from the UI, then we save a set of documents into an Unstorage server using this key, then from the UI we can display these documents. The point is that any part of the process should be customizable.
 
 
+## Install
+
+- It needs a running Unstorage server from [here](https://github.com/tamasmajer/unstorage-server-with-auth). 
+- It needs a running UI from [here](https://github.com/tamasmajer/obsidian-publish-to-unstorage-astro-ui). 
+- The plugin itself could be copied into an Obsidan vault to try it out (into the .obsidian/plugins folder). You need to install dependencies with `npm i`. If you modify it, run `npm run dev` and restart Obsidian after each modification. You can find more info [here](https://github.com/obsidianmd/obsidian-sample-plugin).
